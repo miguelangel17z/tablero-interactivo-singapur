@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { datasets, type Dataset } from "@/data/singapore";
+import { useEffect, useMemo, useState } from "react";
+import { type Dataset } from "@/data/singapore";
 
 const statusStyles: Record<Dataset["status"], string> = {
   Publicado: "bg-emerald-50 text-emerald-700",
@@ -11,17 +11,32 @@ const statusStyles: Record<Dataset["status"], string> = {
 
 export default function DatasetsSection() {
   const [query, setQuery] = useState("");
+  const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return datasets;
-    return datasets.filter(
-      (d) =>
-        d.name.toLowerCase().includes(q) ||
-        d.agency.toLowerCase().includes(q) ||
-        d.category.toLowerCase().includes(q)
-    );
+  // Cargar datos desde nuestro Route Handler (Backend)
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const searchQuery = query.trim() || "population"; // Por defecto buscar 'population'
+        const res = await fetch(`/api/datasets?q=${encodeURIComponent(searchQuery)}`);
+        if (res.ok) {
+          const json = await res.json();
+          setDatasets(json.data || []);
+        }
+      } catch (error) {
+        console.error("Error fetching datasets:", error);
+      } finally {
+        setLoading(false);
+      }
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(delayDebounceFn);
   }, [query]);
+
+  // Ya no filtramos en el cliente, el backend (SingStat) hace el trabajo
+  const filtered = datasets;
 
   return (
     <div className="space-y-6">
@@ -31,7 +46,7 @@ export default function DatasetsSection() {
             Catálogo de datos abiertos
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            {filtered.length} de {datasets.length} conjuntos de datos
+            {loading ? "Cargando..." : `${filtered.length} conjuntos de datos`}
           </p>
         </div>
         <input
@@ -57,33 +72,47 @@ export default function DatasetsSection() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {filtered.map((d) => (
-              <tr key={d.id} className="hover:bg-slate-50">
-                <td className="px-4 py-3 font-medium text-ink">{d.name}</td>
-                <td className="px-4 py-3 text-slate-600">{d.agency}</td>
-                <td className="px-4 py-3 text-slate-600">{d.category}</td>
-                <td className="px-4 py-3 text-slate-600">{d.format}</td>
-                <td className="px-4 py-3 text-slate-600">{d.updated}</td>
-                <td className="px-4 py-3">
-                  <span className="font-semibold text-ink">{d.quality}</span>
-                  <span className="text-slate-400">/100</span>
-                </td>
-                <td className="px-4 py-3">
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusStyles[d.status]}`}
-                  >
-                    {d.status}
-                  </span>
-                </td>
-              </tr>
-            ))}
-            {filtered.length === 0 && (
+            {loading ? (
+              // Esqueleto de carga (Loading skeleton)
+              [...Array(5)].map((_, i) => (
+                <tr key={i} className="animate-pulse">
+                  <td className="px-4 py-4"><div className="h-4 w-3/4 rounded bg-slate-200"></div></td>
+                  <td className="px-4 py-4"><div className="h-4 w-1/2 rounded bg-slate-200"></div></td>
+                  <td className="px-4 py-4"><div className="h-4 w-2/3 rounded bg-slate-200"></div></td>
+                  <td className="px-4 py-4"><div className="h-4 w-1/3 rounded bg-slate-200"></div></td>
+                  <td className="px-4 py-4"><div className="h-4 w-2/3 rounded bg-slate-200"></div></td>
+                  <td className="px-4 py-4"><div className="h-4 w-1/2 rounded bg-slate-200"></div></td>
+                  <td className="px-4 py-4"><div className="h-6 w-16 rounded-full bg-slate-200"></div></td>
+                </tr>
+              ))
+            ) : filtered.length > 0 ? (
+              filtered.map((d) => (
+                <tr key={d.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3 font-medium text-ink">{d.name}</td>
+                  <td className="px-4 py-3 text-slate-600">{d.agency}</td>
+                  <td className="px-4 py-3 text-slate-600">{d.category}</td>
+                  <td className="px-4 py-3 text-slate-600">{d.format}</td>
+                  <td className="px-4 py-3 text-slate-600">{d.updated}</td>
+                  <td className="px-4 py-3">
+                    <span className="font-semibold text-ink">{d.quality}</span>
+                    <span className="text-slate-400">/100</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${statusStyles[d.status]}`}
+                    >
+                      {d.status}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            ) : (
               <tr>
-                <td
-                  colSpan={7}
-                  className="px-4 py-8 text-center text-slate-400"
-                >
-                  Sin resultados para “{query}”.
+                <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
+                  <div className="flex flex-col items-center justify-center">
+                    <span className="text-2xl mb-2">🔍</span>
+                    <p>Sin resultados para “{query}”.</p>
+                  </div>
                 </td>
               </tr>
             )}
